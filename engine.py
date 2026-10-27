@@ -76,6 +76,20 @@ def get_route(features):
     return lines[0]
 
 
+def orient_route(route, direction='reverse'):
+    """Orient ONE pipeline for BOTH ground sampling and crossing stationing.
+
+    'reverse': last KMZ vertex becomes engineering CH 0+000 (Sy-175).
+    'forward': first KMZ vertex remains CH 0+000.
+    Never mirror crossing chainages independently.
+    """
+    if direction not in ('forward', 'reverse'):
+        raise ValueError('route_direction must be forward or reverse')
+    if route.geom_type != 'LineString' or route.is_empty:
+        raise ValueError('Expected one continuous pipeline LineString')
+    return LineString(list(route.coords)[::-1]) if direction == 'reverse' else route
+
+
 def intersection_points(g):
     """Return every distinct point crossing; retain overlap segments for special handling.
 
@@ -156,8 +170,8 @@ def _crossing_events(route, geom):
     return unique
 
 
-def crossings(route, features, id_field, description_field, reverse_crossing_chainage=False):
-    """Compute crossing chainages with optional reverse crossing-only stationing.
+def crossings(route, features, id_field, description_field):
+    """Compute crossing chainages from route origin, never crossing feature order.
 
     Each input crossing is intersected with the original ordered pipeline line.
     Multi-intersections are retained. A crossing coincident with the pipeline
@@ -174,16 +188,12 @@ def crossings(route, features, id_field, description_field, reverse_crossing_cha
         desc = str(_attribute(attrs, description_field, ''))
         events = _crossing_events(route, geom)
         for event_index, (ch, event_kind) in enumerate(events, 1):
-            geometric_ch = max(0.0, min(float(route.length), ch))
-            ch = (float(route.length) - geometric_ch) if reverse_crossing_chainage else geometric_ch
             ch = max(0.0, min(float(route.length), ch))
             label = f'CH: {kp(ch)} - {identifier} - {desc}'.rstrip(' -')
             if event_kind == 'overlap_endpoint' and len(events) > 1:
-                label += ' - ' + (('EXIT' if event_index == 1 else 'ENTRY' if event_index == len(events) else 'BOUNDARY') if reverse_crossing_chainage else ('ENTRY' if event_index == 1 else 'EXIT' if event_index == len(events) else 'BOUNDARY'))
+                label += ' - ' + ('ENTRY' if event_index == 1 else 'EXIT' if event_index == len(events) else 'BOUNDARY')
             found.append({
                 'chainage_m': round(ch, 3), 'kp': kp(ch), 'id': identifier,
-                'geometric_chainage_m': round(geometric_ch, 3),
-                'reverse_crossing_chainage': bool(reverse_crossing_chainage),
                 'description': desc, 'label': label,
                 'overlap_midpoint': False,
                 'event_type': event_kind,

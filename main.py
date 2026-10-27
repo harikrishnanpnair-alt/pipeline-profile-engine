@@ -32,7 +32,8 @@ async def save_upload(file,directory,allowed):
 async def generate(route:UploadFile=File(...),crossing:UploadFile|None=File(None),surface:UploadFile|None=File(None),
                    source:str=Form('srtm'),epsg:int=Form(32640),interval:float=Form(25),
                    id_field:str=Form('Crossing_ID'),description_field:str=Form('Description'),
-                   hscale:int=Form(2500),vscale:int=Form(100)):
+                   hscale:int=Form(2500),vscale:int=Form(100),
+                   reverse_crossing_chainage:bool=Form(True)):
     if source not in ('srtm','aster','dem'):raise HTTPException(400,'Source must be srtm, aster or dem; TIN conversion is not yet implemented')
     if epsg not in (32639,32640,27039,27040):raise HTTPException(400,'Unsupported projected CRS')
     if not 1<=interval<=1000:raise HTTPException(400,'Interval must be 1–1000 m')
@@ -48,7 +49,8 @@ async def generate(route:UploadFile=File(...),crossing:UploadFile|None=File(None
         cs=[]
         if c:
             features,ccrs=read_vectors(c)
-            cs=crossings(line,project_features(features,ccrs,f'EPSG:{epsg}'),id_field,description_field)
+            cs=crossings(line,project_features(features,ccrs,f'EPSG:{epsg}'),id_field,description_field,
+                         reverse_crossing_chainage=reverse_crossing_chainage)
         samples=sample_route(line,interval)
         if len(samples)>20001:raise ValueError('Too many samples; increase interval')
         elev=raster_elevations(samples,d,f'EPSG:{epsg}') if source=='dem' else online_elevations(samples,f'EPSG:{epsg}',source)
@@ -57,7 +59,7 @@ async def generate(route:UploadFile=File(...),crossing:UploadFile|None=File(None
         make_dxf(rows,cs,directory/'Engineering_Profile.dxf',hscale,vscale)
         make_excel(rows,cs,directory/'Engineering_Profile.xlsx')
         import json
-        result={'job_id':job,'route_length_m':round(line.length,3),'source':source,'epsg':epsg,'samples':rows,'crossings':cs,
+        result={'job_id':job,'route_length_m':round(line.length,3),'source':source,'epsg':epsg,'reverse_crossing_chainage':reverse_crossing_chainage,'samples':rows,'crossings':cs,
                 'downloads':{'dxf':f'/profile/download/{job}/Engineering_Profile.dxf','excel':f'/profile/download/{job}/Engineering_Profile.xlsx'},
                 'note':'Ground elevations from terrain sources are approximate; no pipe design level is inferred.'}
         (directory/'result.json').write_text(json.dumps(result),encoding='utf-8')

@@ -1,29 +1,32 @@
-# Pipeline Engineering Profile Engine — initial MVP
+# Sy-175 corrected pipeline profile backend
 
-Independent FastAPI backend for the existing GIS Processing Portal. Does not replace `gdb_qc_cloud`.
+Replace **both** `main.py` and `engine.py` in `pipeline-profile-engine`, then redeploy Render.
 
-## Deploy
-Create a GitHub repository named `pipeline-profile-engine`, upload these files to its root, and create a **Render Docker Web Service** pointing to it. Configure `ALLOWED_ORIGINS=https://harikrishnanpnair-alt.github.io` and, optionally, `SRTM_ELEVATION_URL`. Start command is in Dockerfile. Visit `/health` and `/docs` to test.
+## Important change
 
-## Current features
-- Route KMZ/KML/GeoJSON upload (single continuous LineString).
-- Crossing zipped shapefile (with `.shp`, `.shx`, `.dbf`, `.prj`) or GeoJSON.
-- WGS84/Nahrwan UTM zones 39/40, chainage and intersection labels.
-- SRTM online using public OpenTopoData SRTM30m endpoint (subject to external rate limits).
-- ASTER online **only when** a compatible elevation API is configured in `ASTER_ELEVATION_URL`; otherwise upload an ASTER GeoTIFF using DEM mode.
-- Uploaded georeferenced DEM `.tif`, `.tiff`, `.img`.
-- AutoCAD DXF with green ground line, red crossing lines, yellow vertical labels; Excel schedule.
+The original Sy-175 KMZ's last vertex is the engineering start near RX-01.
+The engine now orients the **single route** before generating BOTH ground profile samples and crossing chainages.
+No independent crossing-only mirroring is performed.
 
-## Limitations / planned
-- **TIN is not implemented in this MVP**. Convert LandXML/TIN to raster DEM first, or add a dedicated triangulation module.
-- Crossing line overlap is represented by midpoint and flagged; polygon intersections may need entry/exit handling.
-- DXF is a starting profile, not yet a fully templated engineering-data-band drawing. Web portal integration is pending.
-- Uploaded files stored in ephemeral temp storage, without scheduled cleanup. Use restricted access for production.
-- SRTM/ASTER terrain is not survey-grade; verify vertical datum and units.
-- No built-in authentication; protect service before public production deployment.
+The API accepts `route_direction=reverse` (default for this package, Sy-175) or `route_direction=forward` (for other KMZs whose first vertex is CH 0+000).
 
-## API
-`POST /profile/generate` multipart: `route`, optional `crossing`, optional `surface`, `source=srtm|aster|dem`, `epsg=32640`, `interval=25`, `id_field=Crossing_ID`, `description_field=Description`, `hscale=2500`, `vscale=100`. Returns samples, crossings, and DXF/Excel download paths.
+POST `/profile/generate` multipart form fields include:
+- `route`: KMZ/KML/GeoJSON
+- `crossing`: ZIP shapefile/GeoJSON (optional)
+- `route_direction`: `reverse` or `forward` (default `reverse`)
+- `id_field`: `CrossingNa` (default)
+- `description_field`: `CrossingTy` (default)
+- existing `epsg`, `source`, `interval`, `hscale`, `vscale`, `surface` unchanged
 
-## Run locally
-`pip install -r requirements.txt "fiona>=1.9,<2"` then `uvicorn main:app --reload`.
+The response now includes `route_direction`, `start_easting`, `start_northing`, `end_easting`, and `end_northing` for diagnostics.
+
+## Verified with your supplied files
+- Pipeline_Sy_175.kmz
+- Crossings_Line.zip
+- EPSG:27039
+- Route length approximately 3,847.459 m
+- RX-01 near CH 0+009.558 and CH 0+015.558 (overlap endpoints)
+
+The original KMZ is not edited. Ground elevations require a live DEM/online source and were not fetched in this offline test.
+
+**Other projects:** Set `route_direction=forward` if their KMZ already starts at engineering CH 0+000. Do not send any old `reverse_crossing_chainage` flag.
